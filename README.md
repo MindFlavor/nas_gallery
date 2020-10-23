@@ -1,8 +1,10 @@
 # NAS picture gallery
 
-![example00](docs/fire00.png)
+Using a browser | Using an Android device
+-- | --
+![example00](docs/fire00.png) | ![example_android](docs/android00.jpg)
 
-![example_android](docs/android00.jpg)
+> 
 
 ## Why?
 
