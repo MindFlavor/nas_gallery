@@ -35,6 +35,8 @@ While you can run NAS Gallery as an executable, it's way easier use docker compo
 5. Start the container with `docker-compose up`. 
 6. Browse http::<your_server_ip> and profit!
 
+> Step 1 and 2 will become unnecessary after I have published the image in the public docker registry.
+
 This setup is fine for an internal networks **only** since there is no authentication. 
 
 ## License
