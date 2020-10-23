@@ -4,8 +4,6 @@ Using a browser | Using an Android device
 -- | --
 ![example00](docs/fire00.png) | ![example_android](docs/android00.jpg)
 
-> 
-
 ## Why?
 
 So you have a lot of pictures in your NAS and no way to share them? Did you take a lot of pictures at last party and want to share them to other people *without* resorting to a social network? Would you like to browse your pictures from a handheld device *without* uploading them to the cloud? If yes, and you have some basic docker skills, this program is for you. 
