@@ -36,3 +36,14 @@ While you can run NAS Gallery as an executable, it's way easier use docker compo
 6. Browse http::<your_server_ip> and profit!
 
 This setup is fine for an internal networks **only** since there is no authentication. 
+
+## License
+
+This program won't be very appealing if it costed you money, right? Well it's free, open source and under [MIT License](LICENSE.md). 
+
+## Contributing
+
+Every contribution is welcome, no formality required: just open an issue or PR. Keep in mind this is a pet project: while I use it every day and thus I am personally interested, I cannot make guarantees of response time. 
+
+Cheers,
+Francesco
