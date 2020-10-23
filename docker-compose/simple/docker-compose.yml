@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  gallery:
+    image: "nas_gallery:latest"
+    ports:
+      - "80:8000"
+    environment:
+      - SIMPLE_GAL_FORCED_USER=forced.user@foo.bar
+    volumes:
+      - /your_folder:/mnt/nas
+      

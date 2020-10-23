@@ -1,0 +1,4 @@
+.git/**
+rust/target/**
+typescript/dist/**
+typescript/node_modules/**

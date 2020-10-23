@@ -1,0 +1,593 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+
+#[macro_use]
+extern crate rocket;
+#[macro_use]
+extern crate log;
+use rocket::http::Status;
+use rocket::http::{ContentType, MediaType};
+use rocket::response::NamedFile;
+use rocket::{Response, State};
+use snafu::{Backtrace, ResultExt, Snafu};
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+mod audit;
+mod file_type;
+mod file_with_size;
+mod folder;
+mod forwarded_identity;
+mod logging;
+mod options;
+use file_type::FileType;
+use file_with_size::FileWithSize;
+use forwarded_identity::ForwardedIdentity;
+use logging::setup_logger;
+use options::*;
+
+static IMAGE_EXTENSIONS: &'static [&'static str] = &["png", "bmp", "jpg", "gif"];
+static VIDEO_EXTENSIONS: &'static [&'static str] = &["mkv", "mp4", "avi", "mov"];
+
+fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>> {
+    let file = std::fs::OpenOptions::new().read(true).open(&path)?;
+
+    let content_type = ContentType::parse_flexible(&path.extension().unwrap().to_str().unwrap())
+        .unwrap_or_else(|| {
+            let extension = path.extension().unwrap().to_str().unwrap().to_lowercase();
+            debug!("extension == {:?}", extension);
+
+            let media_type =
+                MediaType::from_extension(&extension).unwrap_or_else(|| match extension.as_ref() {
+                    "mkv" => MediaType::new("video", "mp4"),
+                    "avi" => MediaType::new("video", "x-msvideo"),
+                    "webm" => MediaType::new("video", "webm"),
+                    "webp" => MediaType::new("image", "webp"),
+                    "ogv" => MediaType::new("video", "ogg"),
+                    "mpeg" => MediaType::new("video", "mpeg"),
+                    _ => {
+                        warn!(
+                            "unsuppored media type {}, returning application/octet-stream",
+                            extension
+                        );
+                        MediaType::new("application", "octet-stream")
+                    }
+                });
+            ContentType(media_type)
+        });
+    debug!("content_type == {:?}", content_type);
+
+    let mut response = Response::new();
+    response.set_status(Status::Ok);
+    response.set_header(content_type);
+    response.set_sized_body(file);
+    Ok(response)
+}
+
+#[get("/", rank = 1)]
+fn root<'r>(options: State<'r, Options>, forwarded_identity: ForwardedIdentity) -> Response<'r> {
+    if !options.identity_allowed(&forwarded_identity) {
+        let mut response = Response::new();
+        response.set_status(Status::Unauthorized);
+        response
+    } else {
+        let path = Path::new(&options.static_site_path).join("index.html");
+        get_file(&path).unwrap()
+    }
+}
+
+#[get("/<file..>", rank = 1)]
+fn site<'r>(
+    options: State<'r, Options>,
+    forwarded_identity: ForwardedIdentity,
+    file: PathBuf,
+) -> Response<'r> {
+    if !options.identity_allowed(&forwarded_identity) {
+        let mut response = Response::new();
+        response.set_status(Status::Unauthorized);
+        response
+    } else {
+        let file = Path::new(&options.static_site_path).join(file);
+        trace!("requested: {:?}", &file);
+        if file.exists() {
+            get_file(&file).unwrap()
+        } else {
+            // the file does not exists so let's call index.html and let
+            // angular sort out the path
+            get_file(&Path::new(&options.static_site_path).join("index.html")).unwrap()
+        }
+    }
+}
+
+#[get("/path/<path..>")]
+fn path<'r>(
+    options: State<'r, Options>,
+    forwarded_identity: ForwardedIdentity,
+    path: PathBuf,
+) -> Response<'r> {
+    let path = PathBuf::from("/").join(path);
+    trace!("requesting: {:?}", &path);
+    trace!("Authenticated as {}", &forwarded_identity);
+    let is_folder_allowed = options.is_folder_allowed(&path, &forwarded_identity.email);
+    trace!("is_folder_allowed == {}", is_folder_allowed);
+
+    if !is_folder_allowed {
+        let mut response = Response::new();
+        response.set_status(Status::Unauthorized);
+        response
+    } else {
+        trace!("extension == {:?}", path.as_path().extension());
+        let extension = match path.as_path().extension() {
+            Some(ext) => ext.to_str().unwrap().to_lowercase(),
+            None => {
+                let mut response = Response::new();
+                response.set_status(Status::NotFound);
+                return response;
+            }
+        };
+
+        if path.as_path().is_dir() {
+            let mut response = Response::new();
+            response.set_status(Status::NotFound);
+            return response;
+        } else if IMAGE_EXTENSIONS
+            .iter()
+            .find(|&ext| ext == &extension)
+            .is_some()
+            || VIDEO_EXTENSIONS
+                .iter()
+                .find(|&ext| ext == &extension)
+                .is_some()
+        {
+            options.audit(
+                &forwarded_identity.email,
+                "image/video",
+                path.to_str().unwrap(),
+                "get",
+                true,
+            );
+
+            debug!("sending == {:?}", &path);
+            match get_file(&path) {
+                Ok(response) => response,
+                Err(_err) => {
+                    let mut response = Response::new();
+                    response.set_status(Status::NotFound);
+                    response
+                }
+            }
+        } else {
+            let mut response = Response::new();
+            response.set_status(Status::NotFound);
+            return response;
+        }
+    }
+}
+
+fn generate_thumb_folder_path(options: &Options, size: u64, original_path: &PathBuf) -> PathBuf {
+    trace!("original_path == {:?}", &original_path);
+    let path = Path::new(&options.thumb_folder_path).join(format!("{}x{}", size, size));
+    trace!("generate_thumb_folder_path == {:?}", &path);
+    let path = path.join(&original_path.parent().unwrap().to_str().unwrap()[1..]);
+    trace!("generate_thumb_folder_path == {:?}", &path);
+
+    std::fs::create_dir_all(&path).unwrap();
+
+    path
+}
+
+fn generate_picture_thumb(
+    options: &Options,
+    size: u64,
+    original_path: &PathBuf,
+    complete_path: &PathBuf,
+) -> PathBuf {
+    let output_file_name = generate_thumb_folder_path(options, size, &original_path).join(format!(
+        "{}.jpg",
+        original_path.file_name().unwrap().to_str().unwrap()
+    ));
+    trace!("output_file_name == {:#?}", output_file_name);
+
+    // if we already have a thumb, do not regenerate it
+    if !output_file_name.exists() {
+        let mut cmd = Command::new("convert");
+        let cmd = cmd.args(&[
+            complete_path.to_str().unwrap(),
+            "-auto-orient",
+            "-thumbnail",
+            &format!("{}x{}>", size, size),
+            "-background",
+            "white",
+            "-gravity",
+            "center",
+            "-extent",
+            &format!("{}x{}", size, size),
+            output_file_name.to_str().unwrap(),
+        ]);
+        trace!("{:#?}", cmd);
+        let output = cmd.output().unwrap();
+        trace!("{:?}", output);
+    }
+
+    output_file_name
+}
+
+fn generate_video_thumb(
+    options: &Options,
+    size: u64,
+    original_path: &PathBuf,
+    complete_path: &PathBuf,
+) -> PathBuf {
+    let output_file_name = generate_thumb_folder_path(options, size, &original_path).join(format!(
+        "{}.jpg",
+        original_path.file_name().unwrap().to_str().unwrap()
+    ));
+    trace!("output_file_name == {:#?}", output_file_name);
+
+    // if we already have a thumb, do not regenerate it
+    if !output_file_name.exists() {
+        let mut cmd = Command::new("ffmpeg");
+        let cmd = cmd.args(&[
+            //"-ss",
+            //"00:00:01",
+            "-i",
+            complete_path.to_str().unwrap(),
+            "-vframes",
+            "1",
+            output_file_name.to_str().unwrap(),
+            "-y",
+        ]);
+        trace!("about to send == {:#?}", cmd);
+        let output = cmd.output().unwrap();
+        trace!("{:?}", output);
+
+        let mut cmd = Command::new("convert");
+        let cmd = cmd.args(&[
+            output_file_name.to_str().unwrap(),
+            "-thumbnail",
+            &format!("{}x{}>", size, size),
+            "-background",
+            "white",
+            "-gravity",
+            "center",
+            "-extent",
+            &format!("{}x{}", size, size),
+            output_file_name.to_str().unwrap(),
+        ]);
+        trace!("{:#?}", cmd);
+        let output = cmd.output().unwrap();
+        trace!("{:?}", output);
+
+        //let mut cmd = Command::new("montage");
+        //let cmd = cmd.args(&[
+        //    "-label",
+        //    original_path.file_name().unwrap().to_str().unwrap(),
+        //    output_file_name.to_str().unwrap(),
+        //    "-font",
+        //    "Arial",
+        //    "-pointsize",
+        //    "15",
+        //    "-frame",
+        //    "5",
+        //    "-geometry",
+        //    "+0+0",
+        //    output_file_name.to_str().unwrap(),
+        //]);
+        //trace!("{:#?}", cmd);
+        //let output = cmd.output().unwrap();
+        //trace!("{:?}", output);
+
+        let mut cmd = Command::new("composite");
+        let cmd = cmd.args(&[
+            "-dissolve",
+            "50",
+            "-gravity",
+            "Center",
+            "play256.png",
+            output_file_name.to_str().unwrap(),
+            "-alpha",
+            "Set",
+            output_file_name.to_str().unwrap(),
+        ]);
+        trace!("{:#?}", cmd);
+        let output = cmd.output().unwrap();
+        trace!("{:?}", output);
+    }
+
+    output_file_name
+}
+
+#[get("/thumb/<max_size>/<path..>")]
+fn thumb<'r>(
+    options: State<'r, Options>,
+    forwarded_identity: ForwardedIdentity,
+    max_size: u64,
+    path: PathBuf,
+) -> Option<NamedFile> {
+    let path = PathBuf::from("/").join(path);
+    trace!("requesting: {:?}", &path);
+    trace!("Authenticated as {}", &forwarded_identity);
+    let is_folder_allowed = options.is_folder_allowed(&path, &forwarded_identity.email);
+    trace!("is_folder_allowed == {}", is_folder_allowed);
+
+    if !is_folder_allowed {
+        None
+    } else {
+        trace!("{:?}", path);
+
+        if path.as_path().is_dir() {
+            None
+        } else {
+            trace!("extension == {:?}", path.as_path().extension());
+            let extension = match path.as_path().extension() {
+                Some(ext) => ext.to_str().unwrap().to_lowercase(),
+                None => return None,
+            };
+
+            if IMAGE_EXTENSIONS
+                .iter()
+                .find(|&ext| ext == &extension)
+                .is_some()
+            {
+                NamedFile::open(generate_picture_thumb(&options, max_size, &path, &path)).ok()
+            } else if VIDEO_EXTENSIONS
+                .iter()
+                .find(|&ext| ext == &extension)
+                .is_some()
+            {
+                NamedFile::open(generate_video_thumb(&options, max_size, &path, &path)).ok()
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn is_previewable_file(file: &PathBuf) -> bool {
+    let extension = match file.as_path().extension() {
+        Some(ext) => ext.to_str().unwrap().to_lowercase(),
+        None => return false,
+    };
+
+    IMAGE_EXTENSIONS
+        .iter()
+        .find(|&ext| ext == &extension)
+        .is_some()
+        || VIDEO_EXTENSIONS
+            .iter()
+            .find(|&ext| ext == &extension)
+            .is_some()
+}
+
+#[get("/list/<file_type>/<path..>")]
+fn list_files<'r>(
+    options: State<'r, Options>,
+    forwarded_identity: ForwardedIdentity,
+    file_type: FileType,
+    path: PathBuf,
+) -> Response<'r> {
+    //Option<Json<Vec<FileWithSize>>> {
+    let path = PathBuf::from("/").join(path);
+    trace!("Authenticated as {}", &forwarded_identity);
+    trace!("requested path == {:?}", &path);
+
+    let is_folder_allowed = options.is_folder_allowed(&path, &forwarded_identity.email);
+    trace!("is_folder_allowed == {}", is_folder_allowed);
+
+    if !is_folder_allowed {
+        let mut response = Response::new();
+        response.set_status(Status::Unauthorized);
+        return response;
+    }
+
+    let items = match file_type {
+        FileType::Preview => {
+            let a = path
+                .read_dir()
+                .unwrap()
+                .map(|res| res.unwrap().path())
+                .filter(|res| res.is_file())
+                .filter(|res| is_previewable_file(&res))
+                .map(|res| {
+                    FileWithSize::with_size(
+                        res.to_str().unwrap().to_owned(),
+                        res.metadata().unwrap().len(),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            options.audit(
+                &forwarded_identity.email,
+                "preview",
+                path.to_str().unwrap(),
+                "list",
+                true,
+            );
+
+            a
+        }
+        FileType::Extra => {
+            let a = path
+                .read_dir()
+                .unwrap()
+                .map(|res| res.unwrap().path())
+                .filter(|res| res.is_file())
+                .filter(|res| !is_previewable_file(&res))
+                .map(|res| {
+                    FileWithSize::with_size(
+                        res.to_str().unwrap().to_owned(),
+                        res.metadata().unwrap().len(),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            options.audit(
+                &forwarded_identity.email,
+                "extra",
+                path.to_str().unwrap(),
+                "list",
+                true,
+            );
+
+            a
+        }
+        FileType::Folder => {
+            let a = path
+                .read_dir()
+                .unwrap()
+                .map(|res| res.unwrap().path())
+                .filter(|res| res.is_dir())
+                .filter(|res| options.is_folder_allowed(&res, &forwarded_identity.email))
+                .map(|res| FileWithSize::without_size(res.to_str().unwrap().to_owned()))
+                .collect::<Vec<_>>();
+
+            options.audit(
+                &forwarded_identity.email,
+                "folder",
+                path.to_str().unwrap(),
+                "list",
+                true,
+            );
+
+            a
+        }
+    };
+
+    let mut response = Response::new();
+    response.set_status(Status::Ok);
+    add_access_control_allow_origin_if_needed(&mut response, &options);
+    response.set_sized_body(Cursor::new(serde_json::to_string(&items).unwrap()));
+    response
+}
+
+#[get("/allowed/<path..>")]
+fn is_folder_allowed<'r>(
+    options: State<'r, Options>,
+    forwarded_identity: ForwardedIdentity,
+    path: PathBuf,
+) -> Response<'r> {
+    trace!(
+        "is_folder_allowed(forwared_identity = {:?}, path == {:?}",
+        &forwarded_identity,
+        &path
+    );
+    let path = PathBuf::from("/").join(path);
+
+    let mut response = Response::new();
+    response.set_status(Status::Ok);
+    response.set_sized_body(Cursor::new(
+        serde_json::to_string(&options.is_folder_allowed(&path, &forwarded_identity.email))
+            .unwrap(),
+    ));
+    add_access_control_allow_origin_if_needed(&mut response, &options);
+    response
+}
+
+#[get("/firstlevel")]
+fn get_first_level_folders<'r>(
+    options: State<'r, Options>,
+    first_folder_by_email: State<'r, HashMap<String, Vec<String>>>,
+    forwarded_identity: ForwardedIdentity,
+) -> Response<'r> {
+    trace!("{:#?}", first_folder_by_email);
+
+    options.audit(
+        &forwarded_identity.email,
+        "first_level_folders",
+        "",
+        "list",
+        true,
+    );
+    if !options.identity_allowed(&forwarded_identity) {
+        let mut response = Response::new();
+        response.set_status(Status::Unauthorized);
+        response
+    } else {
+        let mut response = Response::new();
+        response.set_status(Status::Ok);
+        add_access_control_allow_origin_if_needed(&mut response, &options);
+        response.set_sized_body(Cursor::new(
+            serde_json::to_string(
+                first_folder_by_email
+                    .get(&forwarded_identity.email)
+                    .unwrap(),
+            )
+            .unwrap(),
+        ));
+        response
+    }
+}
+
+#[inline]
+fn add_access_control_allow_origin_if_needed(response: &mut Response, options: &Options) {
+    if let Some(access_control_allow_origin) = &options.access_control_allow_origin {
+        response.adjoin_raw_header(
+            "Access-Control-Allow-Origin",
+            access_control_allow_origin.to_owned(),
+        );
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Could read config file {} error: {}", config_file.display(), source))]
+    ReadConfig {
+        config_file: PathBuf,
+        source: std::io::Error,
+        backtrace: Backtrace,
+    },
+    #[snafu(display("Could parse config file error: {}", source))]
+    ParseConfig {
+        options: String,
+        source: toml::de::Error,
+        backtrace: Backtrace,
+    },
+}
+
+fn main() {
+    let config_file = std::env::args()
+        .nth(1)
+        .expect("please pass the configuration file as first parameter");
+    println!("reading configuration from {}", config_file);
+
+    let config_file = PathBuf::from(config_file);
+    if !config_file.exists() {
+        eprintln!(
+            "configuration file {:?} does not exists or is not accessible",
+            config_file
+        );
+        return;
+    }
+
+    let options = std::fs::read_to_string(&config_file)
+        .context(ReadConfig { config_file })
+        .unwrap();
+    let options: Options = (&options as &str)
+        .try_into()
+        .context(ParseConfig { options })
+        .unwrap();
+
+    setup_logger(&options.log_file).unwrap();
+
+    let first_folders_by_email = options.calculate_first_level_folders_for_every_user();
+    debug!("first_folders_by_email == {:#?}", first_folders_by_email);
+
+    rocket::ignite()
+        .mount(
+            "/",
+            routes![
+                path,
+                thumb,
+                list_files,
+                get_first_level_folders,
+                is_folder_allowed,
+                site,
+                root,
+            ],
+        )
+        .manage(first_folders_by_email)
+        .manage(options)
+        .launch();
+}

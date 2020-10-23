@@ -1,0 +1,16 @@
+log_file = "/var/log/nas_gallery/nas_gallery.log"
+audit_file = "/var/log/nas_gallery/audit.log"
+static_site_path = "/var/www/nas_gallery/"
+thumb_folder_path = "/tmp"
+
+[[groups]]
+name = "Sample"
+members_email = ["forced.user@foo.bar"]
+
+[[folders]]
+path = "/mnt/nas"
+inheritable = true
+breaks_inheritance = true
+allowed = ["#Sample"]
+denied = []
+
