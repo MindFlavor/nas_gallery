@@ -15,8 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2 
-      
+    - uses: actions/checkout@v2      
     - name: Install minimal nightly with clippy and rustfmt
       uses: actions-rs/toolchain@v1
       with:
@@ -24,11 +23,10 @@ jobs:
         toolchain: nightly
         components: rustfmt, clippy  
       
+    - uses: actions-rs/cargo@v1
     - name: Rust Build
-      uses: actions-rs/cargo@v1
-      with:
-        working-directory: ./rust
-        run: cargo build --verbose
+      working-directory: ./rust
+      run: cargo build --verbose
    
     - name: fmt
       working-directory: ./rust
