@@ -16,7 +16,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: rust
+        working-directory: ./rust
 
     steps:
     - uses: actions/checkout@v2      
