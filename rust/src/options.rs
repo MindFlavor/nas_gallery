@@ -241,6 +241,7 @@ impl Options {
             debug!("processing path {:?}", subpath);
 
             // if the path breaks inheritance reset the permissions!
+            #[allow(unused_assignments)]
             if let Some(breaks_inheritance) = subpath.breaks_inheritance {
                 if breaks_inheritance {
                     current_allowed = HashSet::new();

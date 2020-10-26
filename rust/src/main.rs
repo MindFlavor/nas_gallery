@@ -28,8 +28,8 @@ use forwarded_identity::ForwardedIdentity;
 use logging::setup_logger;
 use options::*;
 
-static IMAGE_EXTENSIONS: &'static [&'static str] = &["png", "bmp", "jpg", "gif"];
-static VIDEO_EXTENSIONS: &'static [&'static str] = &["mkv", "mp4", "avi", "mov"];
+static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
+static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov"];
 
 fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>> {
     let file = std::fs::OpenOptions::new().read(true).open(&path)?;
