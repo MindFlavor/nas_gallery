@@ -23,10 +23,10 @@ jobs:
         toolchain: nightly
         components: rustfmt, clippy  
       
-    - uses: actions-rs/cargo@v1
-    - name: Rust Build
-      working-directory: ./rust
-      run: cargo build --verbose
+    - name: Run cargo check
+      uses: actions-rs/cargo@v1
+      with:
+        command: check
    
     - name: fmt
       working-directory: ./rust
