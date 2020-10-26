@@ -41,9 +41,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for ForwardedIdentity {
 
     fn from_request(request: &'a Request<'r>) -> Outcome<Self, (Status, Self::Error), ()> {
         // in env is set use it regardless
-        let forced_user = std::env::var("SIMPLE_GAL_FORCED_USER");
-        if forced_user.is_ok() {
-            let forced_user = forced_user.unwrap();
+        if let Ok(forced_user) = std::env::var("SIMPLE_GAL_FORCED_USER") {
             warn!("WARN forced user: {}", forced_user);
             return Outcome::Success(ForwardedIdentity::new_forced(forced_user));
         }

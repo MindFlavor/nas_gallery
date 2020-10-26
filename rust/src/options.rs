@@ -305,10 +305,7 @@ impl Options {
                 .iter()
                 .find(|user| user == &user_to_check)
                 .is_none()
-                && current_allowed
-                    .iter()
-                    .find(|user| user == &user_to_check)
-                    .is_some()
+                && current_allowed.iter().any(|user| user == user_to_check)
         };
 
         self.audit(
@@ -328,9 +325,9 @@ impl Options {
     fn explode_group(&self, hs: HashSet<String>) -> HashSet<String> {
         let mut tmp = HashSet::new();
         hs.iter().for_each(|item| {
-            if item.starts_with("#") {
+            if item.starts_with('#') {
                 // find the corresponding group
-                if let Some(group) = self.groups.iter().find(|group| group.name == &item[1..]) {
+                if let Some(group) = self.groups.iter().find(|group| group.name == item[1..]) {
                     // if found, let's add it!
                     group.members_email.iter().for_each(|email| {
                         tmp.insert(email.to_owned());

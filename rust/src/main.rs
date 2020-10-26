@@ -67,7 +67,7 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
 }
 
 #[get("/", rank = 1)]
-fn root<'r>(options: State<'r, Options>, forwarded_identity: ForwardedIdentity) -> Response<'r> {
+fn root(options: State<'_, Options>, forwarded_identity: ForwardedIdentity) -> Response<'_> {
     if !options.identity_allowed(&forwarded_identity) {
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
@@ -79,11 +79,11 @@ fn root<'r>(options: State<'r, Options>, forwarded_identity: ForwardedIdentity) 
 }
 
 #[get("/<file..>", rank = 1)]
-fn site<'r>(
-    options: State<'r, Options>,
+fn site(
+    options: State<'_, Options>,
     forwarded_identity: ForwardedIdentity,
     file: PathBuf,
-) -> Response<'r> {
+) -> Response<'_> {
     if !options.identity_allowed(&forwarded_identity) {
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
@@ -102,11 +102,11 @@ fn site<'r>(
 }
 
 #[get("/path/<path..>")]
-fn path<'r>(
-    options: State<'r, Options>,
+fn path(
+    options: State<'_, Options>,
     forwarded_identity: ForwardedIdentity,
     path: PathBuf,
-) -> Response<'r> {
+) -> Response<'_> {
     let path = PathBuf::from("/").join(path);
     trace!("requesting: {:?}", &path);
     trace!("Authenticated as {}", &forwarded_identity);
@@ -131,15 +131,9 @@ fn path<'r>(
         if path.as_path().is_dir() {
             let mut response = Response::new();
             response.set_status(Status::NotFound);
-            return response;
-        } else if IMAGE_EXTENSIONS
-            .iter()
-            .find(|&ext| ext == &extension)
-            .is_some()
-            || VIDEO_EXTENSIONS
-                .iter()
-                .find(|&ext| ext == &extension)
-                .is_some()
+            response
+        } else if IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension)
+            || VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension)
         {
             options.audit(
                 &forwarded_identity.email,
@@ -161,7 +155,7 @@ fn path<'r>(
         } else {
             let mut response = Response::new();
             response.set_status(Status::NotFound);
-            return response;
+            response
         }
     }
 }
@@ -230,8 +224,6 @@ fn generate_video_thumb(
     if !output_file_name.exists() {
         let mut cmd = Command::new("ffmpeg");
         let cmd = cmd.args(&[
-            //"-ss",
-            //"00:00:01",
             "-i",
             complete_path.to_str().unwrap(),
             "-vframes",
@@ -260,25 +252,6 @@ fn generate_video_thumb(
         let output = cmd.output().unwrap();
         trace!("{:?}", output);
 
-        //let mut cmd = Command::new("montage");
-        //let cmd = cmd.args(&[
-        //    "-label",
-        //    original_path.file_name().unwrap().to_str().unwrap(),
-        //    output_file_name.to_str().unwrap(),
-        //    "-font",
-        //    "Arial",
-        //    "-pointsize",
-        //    "15",
-        //    "-frame",
-        //    "5",
-        //    "-geometry",
-        //    "+0+0",
-        //    output_file_name.to_str().unwrap(),
-        //]);
-        //trace!("{:#?}", cmd);
-        //let output = cmd.output().unwrap();
-        //trace!("{:?}", output);
-
         let mut cmd = Command::new("composite");
         let cmd = cmd.args(&[
             "-dissolve",
@@ -300,8 +273,8 @@ fn generate_video_thumb(
 }
 
 #[get("/thumb/<max_size>/<path..>")]
-fn thumb<'r>(
-    options: State<'r, Options>,
+fn thumb(
+    options: State<'_, Options>,
     forwarded_identity: ForwardedIdentity,
     max_size: u64,
     path: PathBuf,
@@ -326,17 +299,9 @@ fn thumb<'r>(
                 None => return None,
             };
 
-            if IMAGE_EXTENSIONS
-                .iter()
-                .find(|&ext| ext == &extension)
-                .is_some()
-            {
+            if IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension) {
                 NamedFile::open(generate_picture_thumb(&options, max_size, &path, &path)).ok()
-            } else if VIDEO_EXTENSIONS
-                .iter()
-                .find(|&ext| ext == &extension)
-                .is_some()
-            {
+            } else if VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension) {
                 NamedFile::open(generate_video_thumb(&options, max_size, &path, &path)).ok()
             } else {
                 None
@@ -351,24 +316,17 @@ fn is_previewable_file(file: &PathBuf) -> bool {
         None => return false,
     };
 
-    IMAGE_EXTENSIONS
-        .iter()
-        .find(|&ext| ext == &extension)
-        .is_some()
-        || VIDEO_EXTENSIONS
-            .iter()
-            .find(|&ext| ext == &extension)
-            .is_some()
+    IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension)
+        || VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension)
 }
 
 #[get("/list/<file_type>/<path..>")]
-fn list_files<'r>(
-    options: State<'r, Options>,
+fn list_files(
+    options: State<'_, Options>,
     forwarded_identity: ForwardedIdentity,
     file_type: FileType,
     path: PathBuf,
-) -> Response<'r> {
-    //Option<Json<Vec<FileWithSize>>> {
+) -> Response<'_> {
     let path = PathBuf::from("/").join(path);
     trace!("Authenticated as {}", &forwarded_identity);
     trace!("requested path == {:?}", &path);
@@ -463,11 +421,11 @@ fn list_files<'r>(
 }
 
 #[get("/allowed/<path..>")]
-fn is_folder_allowed<'r>(
-    options: State<'r, Options>,
+fn is_folder_allowed(
+    options: State<'_, Options>,
     forwarded_identity: ForwardedIdentity,
     path: PathBuf,
-) -> Response<'r> {
+) -> Response<'_> {
     trace!(
         "is_folder_allowed(forwared_identity = {:?}, path == {:?}",
         &forwarded_identity,
