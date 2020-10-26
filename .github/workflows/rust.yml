@@ -1,0 +1,29 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - working-directory: ./rust
+    - uses: actions/checkout@v2
+
+    - name: Rust Build
+      run: cargo build --verbose
+   
+    - name: fmt
+      run: |
+        cargo fmt --all -- --check
+        
+    - name: Rust tests
+      run: cargo test --all
