@@ -33,7 +33,7 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: clippy
-        args: -- --manifest-path ./rust/Cargo.toml -D warnings
+        args: --manifest-path ./rust/Cargo.toml -- -D warnings
    
     - name: cargo fmt
       uses: actions-rs/cargo@v1
