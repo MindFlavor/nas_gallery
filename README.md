@@ -41,7 +41,7 @@ This setup is fine for an internal networks **only** since there is no authentic
 
 ## License
 
-This program won't be very appealing if it costed you money, right? Well it's free, open source and under [MIT License](LICENSE.md). 
+This program won't be very appealing if it costed you money, right? Well it's free, open source and under [MIT License](LICENSE). 
 
 ## Contributing
 
