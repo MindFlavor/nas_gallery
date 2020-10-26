@@ -13,10 +13,13 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: rust
 
     steps:
     - uses: actions/checkout@v2      
-    - working-directory: ./rust
     - name: Install minimal nightly with clippy and rustfmt
       uses: actions-rs/toolchain@v1
       with:
@@ -30,9 +33,9 @@ jobs:
         command: check
    
     - name: fmt
-      working-directory: ./rust
-      run: |
-        cargo fmt --all -- --check
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
         
     - name: Rust tests
       working-directory: ./rust
