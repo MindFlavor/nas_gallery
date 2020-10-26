@@ -9,14 +9,15 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
 
+defaults:
+  run:
+    shell: bash
+    working-directory: ./rust
+
 jobs:
   build:
 
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./rust
 
     steps:
     - uses: actions/checkout@v2      
