@@ -15,15 +15,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - working-directory: ./rust
     - uses: actions/checkout@v2
 
     - name: Rust Build
+      working-directory: ./rust
       run: cargo build --verbose
    
     - name: fmt
+      working-directory: ./rust
       run: |
         cargo fmt --all -- --check
         
     - name: Rust tests
+      working-directory: ./rust
       run: cargo test --all
