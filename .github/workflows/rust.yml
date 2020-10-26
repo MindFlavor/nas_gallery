@@ -16,6 +16,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2      
+    - working-directory: ./rust
     - name: Install minimal nightly with clippy and rustfmt
       uses: actions-rs/toolchain@v1
       with:
