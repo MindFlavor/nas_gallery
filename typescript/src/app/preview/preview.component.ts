@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, Event, NavigationStart, NavigationEnd, NavigationError } from '@angular/router';
 import { encode } from 'punycode';
 import { max } from 'rxjs/operators';
 import { PreviewFile } from '../entities/items';
@@ -21,18 +21,34 @@ export class PreviewComponent implements OnInit {
   public currentPage: number;
   public isParentAllowed: boolean;
   public isRoot: boolean;
+  public path: string;
 
-  constructor(private simplegal: SimplegalService, private route: ActivatedRoute) { }
+  constructor(private simplegal: SimplegalService, private route: ActivatedRoute, private router: Router) { }
 
   ngOnInit(): void {
+    this.loadFolder(RemoteFolder.decodePath(window.location.pathname + window.location.search));
+
+    this.router.events.subscribe((event: Event) => {
+      if (event instanceof NavigationStart) {
+        this.loadFolder(RemoteFolder.decodePath(event.url));
+      }
+    });
+  }
+
+  private loadFolder(path: string) {
     this.isParentAllowed = false;
     this.isRoot = true;
-
-    const path = RemoteFolder.decodePath(window.location.pathname);
+    this.path = path;
     this.currentPage = 0;
-    if (window.location.search.indexOf('=') != -1)
-      this.currentPage = +window.location.search.substr(window.location.search.indexOf('=') + 1);
     this.subFolders = [];
+
+    // handle query param, if present
+    {
+      if (this.path.indexOf('?') != -1) {
+        this.currentPage = +path.substr(path.indexOf('=') + 1);
+        this.path = path.substr(0, path.indexOf('?'));
+      }
+    }
 
     this.simplegal.getRootFolders().subscribe(rootFolders => {
       console.log(`got root folders ${rootFolders}`);
@@ -70,14 +86,14 @@ export class PreviewComponent implements OnInit {
     return items;
   }
 
-  public getPageLink(page: number): String {
-    return window.location.pathname + `?p=${page}`;
+  public encodePath(path: string): String {
+    return new RemoteFolder(path).encodedPath();
   }
 
   public getUpperFolder(): String {
-    const path = RemoteFolder.decodePath(window.location.pathname);
-    const idx = path.lastIndexOf("/");
-    return path.substring(0, idx);
+    //const path = RemoteFolder.decodePath(window.location.pathname);
+    const idx = this.path.lastIndexOf("/");
+    return this.path.substring(0, idx);
   }
 
   public pages(): PageLink[] {
@@ -130,33 +146,6 @@ export class PreviewComponent implements OnInit {
     return pageLinks;
   }
 
-  public asRows(): PreviewFile[][] {
-    if (!this.previewFiles) return null;
-
-    let rows: PreviewFile[][] = [];
-    let cnt = 0;
-    let currentRow: PreviewFile[] = null;
-
-    for (let item of this.previewFiles) {
-      if (!currentRow) {
-        currentRow = [];
-        cnt = 0;
-      }
-
-      currentRow.push(item);
-      cnt++;
-
-      if (cnt == 5) {
-        rows.push(currentRow);
-        currentRow = null;
-      }
-    }
-
-    if (!currentRow) rows.push(currentRow);
-
-    return rows;
-  }
-
   public lastFolder(path: string): string {
     const lastPathSeparator = path.lastIndexOf('/');
     if (lastPathSeparator) {
@@ -164,10 +153,6 @@ export class PreviewComponent implements OnInit {
     } else {
       return path;
     }
-  }
-
-  public currentPath(): string {
-    return RemoteFolder.decodePath(window.location.pathname);
   }
 
   public lastPathItem(path: string): string {

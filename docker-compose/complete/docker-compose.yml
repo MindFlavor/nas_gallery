@@ -20,7 +20,7 @@ services:
     volumes:
       - /etc/oauth2-proxy/authenticated_emails_files:/authenticated_emails_files
   gallery:
-    image: "nas_gallery:latest"
+    image: "mindflavor/nas_gallery:latest"
     networks:
       oauth2-proxy: 
     user: "149:65534"

@@ -1,15 +1,17 @@
-<h1 *ngIf="!isRoot">{{(lastFolder(currentPath()))}} in {{(getUpperFolder())}}</h1>
+<h1 *ngIf="!isRoot">{{(lastPathItem(path))}} in {{(getUpperFolder())}}</h1>
 <h1 *ngIf="isRoot">Home</h1>
+
 
 <div class="page-container">
     <div class="content-wrap">
         <a id="button"></a>
 
         <div>
-            <a *ngFor="let folder of subFolders" class="btn"
-                href="{{folder.encodedPath()}}">{{(folder.lastPathItem())}}</a>
+            <a *ngFor="let folder of subFolders" class="btn" routerLink="{{folder.encodedPath()}}"
+                routerLinkActive="active">
+                {{(folder.lastPathItem())}}
+            </a>
         </div>
-
 
         <div *ngFor="let file of filesForThisPage()" class="responsive">
             <div class="gallery">
@@ -23,18 +25,20 @@
 <div class="footer">
     <ul class="pages">
         <li class="pages">
-            <a href="/" title="Home">
+            <a routerLink="/" title="Home">
                 <i class="fa fa-home"></i>
             </a>
         </li>
 
         <li class="pages">
-            <a *ngIf="isParentAllowed" href="{{getUpperFolder()}}" title="Up to {{lastFolder(getUpperFolder())}}">
+            <a *ngIf="isParentAllowed" routerLink="{{encodePath(getUpperFolder())}}"
+                title="Up to {{lastFolder(getUpperFolder())}}">
                 <i class="fa fa-caret-square-o-up"></i>
             </a>
         </li>
         <li *ngFor="let page of pages()" class="pages">
-            <a *ngIf="page.toHyperlink" href="{{getPageLink(page.page)}}" title="Page {{page.page}}">{{page.text}}</a>
+            <a *ngIf="page.toHyperlink" routerLink="{{path}}" [queryParams]="{p: page.page}"
+                title="Page {{page.page}}">{{page.text}}</a>
             <div class="page" *ngIf="!page.toHyperlink">{{page.text}}</div>
         </li>
     </ul>

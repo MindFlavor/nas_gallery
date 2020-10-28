@@ -1,3 +1,4 @@
+use crate::options::Options;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::path::PathBuf;
 
@@ -24,8 +25,8 @@ pub enum Error {
     },
 }
 
-pub(crate) fn setup_logger(log_file: &str) -> Result<(), Error> {
-    let log_file = PathBuf::from(log_file);
+pub(crate) fn setup_logger(options: &Options) -> Result<(), Error> {
+    let log_file = PathBuf::from(&options.log_file);
     {
         // try writing in the log so we
         // can output a meaningful message
@@ -50,7 +51,7 @@ pub(crate) fn setup_logger(log_file: &str) -> Result<(), Error> {
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
+        .level(options.log_level)
         .chain(std::io::stdout())
         .chain(
             fern::log_file(log_file.clone()).context(InitializeWriteLog {

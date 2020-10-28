@@ -42,6 +42,7 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
             let media_type =
                 MediaType::from_extension(&extension).unwrap_or_else(|| match extension.as_ref() {
                     "mkv" => MediaType::new("video", "mp4"),
+                    "mp4" => MediaType::new("video", "mp4"),
                     "avi" => MediaType::new("video", "x-msvideo"),
                     "webm" => MediaType::new("video", "webm"),
                     "webp" => MediaType::new("image", "webp"),
@@ -89,14 +90,26 @@ fn site(
         response.set_status(Status::Unauthorized);
         response
     } else {
-        let file = Path::new(&options.static_site_path).join(file);
-        trace!("requested: {:?}", &file);
-        if file.exists() {
-            get_file(&file).unwrap()
+        let complete_path = Path::new(&options.static_site_path).join(&file);
+        trace!("requested: {:?}, mapped as {:?}", &file, &complete_path);
+        if complete_path.exists() {
+            get_file(&complete_path).unwrap()
         } else {
             // the file does not exists so let's call index.html and let
-            // angular sort out the path
-            get_file(&Path::new(&options.static_site_path).join("index.html")).unwrap()
+            // Angular sort out the path
+            let path = Path::new(&options.static_site_path).join("index.html");
+            debug!(
+                "requested {:?} but not found in the site path as {:?}, defaulting to {:?}",
+                &file, &complete_path, &path
+            );
+            if !path.exists() {
+                error!("default path {:?} does not exists or is not accessible. Check the application configuration. Requested file = {:?}, mapped as non existing file = {:?}", path, &file, &complete_path);
+                let mut response = Response::new();
+                response.set_status(Status::NotFound);
+                response
+            } else {
+                get_file(&path).unwrap()
+            }
         }
     }
 }
@@ -527,7 +540,7 @@ fn main() {
         .context(ParseConfig { options })
         .unwrap();
 
-    setup_logger(&options.log_file).unwrap();
+    setup_logger(&options).unwrap();
 
     let first_folders_by_email = options.calculate_first_level_folders_for_every_user();
     debug!("first_folders_by_email == {:#?}", first_folders_by_email);
