@@ -14,6 +14,7 @@ pub struct Group {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct OptionsInternal {
+    pub log_level: Option<String>,
     pub access_control_allow_origin: Option<String>,
     pub thumb_folder_path: String,
     pub log_file: String,
@@ -25,6 +26,7 @@ pub struct OptionsInternal {
 
 #[derive(Clone, Debug)]
 pub struct Options {
+    pub log_level: log::LevelFilter,
     pub access_control_allow_origin: Option<String>,
     pub thumb_folder_path: String,
     pub log_file: String,
@@ -53,6 +55,18 @@ impl TryFrom<&str> for Options {
         });
 
         Ok(Options {
+            log_level: match options.log_level {
+                None => log::LevelFilter::Info,
+                Some(log_level) => match log_level.as_ref() {
+                    "Error" => log::LevelFilter::Error,
+                    "Warn" => log::LevelFilter::Warn,
+                    "Info" => log::LevelFilter::Info,
+                    "Debug" => log::LevelFilter::Debug,
+                    "Trace" => log::LevelFilter::Trace,
+                    "Off" => log::LevelFilter::Off,
+                    _ => log::LevelFilter::Info,
+                },
+            },
             access_control_allow_origin: options.access_control_allow_origin,
             thumb_folder_path: options.thumb_folder_path,
             log_file: options.log_file,

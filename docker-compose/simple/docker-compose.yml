@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   gallery:
-    image: "nas_gallery:latest"
+    image: "mindflavor/nas_gallery:latest"
     ports:
       - "80:8000"
     environment:

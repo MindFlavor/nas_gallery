@@ -86,10 +86,6 @@ export class PreviewComponent implements OnInit {
     return items;
   }
 
-  public getPageLink(page: number): String {
-    return window.location.pathname + `?p=${page}`;
-  }
-
   public encodePath(path: string): String {
     return new RemoteFolder(path).encodedPath();
   }
@@ -150,33 +146,6 @@ export class PreviewComponent implements OnInit {
     return pageLinks;
   }
 
-  public asRows(): PreviewFile[][] {
-    if (!this.previewFiles) return null;
-
-    let rows: PreviewFile[][] = [];
-    let cnt = 0;
-    let currentRow: PreviewFile[] = null;
-
-    for (let item of this.previewFiles) {
-      if (!currentRow) {
-        currentRow = [];
-        cnt = 0;
-      }
-
-      currentRow.push(item);
-      cnt++;
-
-      if (cnt == 5) {
-        rows.push(currentRow);
-        currentRow = null;
-      }
-    }
-
-    if (!currentRow) rows.push(currentRow);
-
-    return rows;
-  }
-
   public lastFolder(path: string): string {
     const lastPathSeparator = path.lastIndexOf('/');
     if (lastPathSeparator) {
@@ -184,11 +153,6 @@ export class PreviewComponent implements OnInit {
     } else {
       return path;
     }
-  }
-
-  public currentPath(): string {
-    //return RemoteFolder.decodePath(window.location.pathname);
-    return this.path;
   }
 
   public lastPathItem(path: string): string {
