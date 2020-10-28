@@ -26,7 +26,7 @@ export class PreviewComponent implements OnInit {
   constructor(private simplegal: SimplegalService, private route: ActivatedRoute, private router: Router) { }
 
   ngOnInit(): void {
-    this.loadFolder(RemoteFolder.decodePath(window.location.pathname));
+    this.loadFolder(RemoteFolder.decodePath(window.location.pathname + window.location.search));
 
     this.router.events.subscribe((event: Event) => {
       if (event instanceof NavigationStart) {
@@ -39,12 +39,16 @@ export class PreviewComponent implements OnInit {
     this.isParentAllowed = false;
     this.isRoot = true;
     this.path = path;
-
-    //const path = RemoteFolder.decodePath(window.location.pathname);
     this.currentPage = 0;
-    if (window.location.search.indexOf('=') != -1)
-      this.currentPage = +window.location.search.substr(window.location.search.indexOf('=') + 1);
     this.subFolders = [];
+
+    // handle query param, if present
+    {
+      if (this.path.indexOf('?') != -1) {
+        this.currentPage = +path.substr(path.indexOf('=') + 1);
+        this.path = path.substr(0, path.indexOf('?'));
+      }
+    }
 
     this.simplegal.getRootFolders().subscribe(rootFolders => {
       console.log(`got root folders ${rootFolders}`);
@@ -73,8 +77,6 @@ export class PreviewComponent implements OnInit {
         this.isParentAllowed = v;
       });
     }
-
-
   }
 
   public filesForThisPage(): PreviewFile[] {
@@ -86,6 +88,10 @@ export class PreviewComponent implements OnInit {
 
   public getPageLink(page: number): String {
     return window.location.pathname + `?p=${page}`;
+  }
+
+  public encodePath(path: string): String {
+    return new RemoteFolder(path).encodedPath();
   }
 
   public getUpperFolder(): String {

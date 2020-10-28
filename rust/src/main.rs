@@ -42,6 +42,7 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
             let media_type =
                 MediaType::from_extension(&extension).unwrap_or_else(|| match extension.as_ref() {
                     "mkv" => MediaType::new("video", "mp4"),
+                    "mp4" => MediaType::new("video", "mp4"),
                     "avi" => MediaType::new("video", "x-msvideo"),
                     "webm" => MediaType::new("video", "webm"),
                     "webp" => MediaType::new("image", "webp"),
