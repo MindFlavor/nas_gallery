@@ -13,20 +13,20 @@ export class SimplegalService {
   }
 
   public getPreview(prefix: string, path: string): Observable<PreviewFile[]> {
-    const entries = this.http.get<PreviewFile[]>("/list/Preview" + path).pipe(map(items => items.sort((a, b) => a.path.localeCompare(b.path))));
+    const entries = this.http.get<PreviewFile[]>("http://10.100.1.80:8000/list/Preview" + path).pipe(map(items => items.sort((a, b) => a.path.localeCompare(b.path))));
     return entries;
   }
 
   public getFolders(path: string): Observable<Folder[]> {
-    const entries = this.http.get<Folder[]>("/list/Folder/" + path).pipe(map(items => items.sort((a, b) => a.path.localeCompare(b.path))));
+    const entries = this.http.get<Folder[]>("http://10.100.1.80:8000/list/Folder/" + path).pipe(map(items => items.sort((a, b) => a.path.localeCompare(b.path))));
     return entries;
   }
 
   public getRootFolders(): Observable<string[]> {
-    return this.http.get<string[]>("/firstlevel").pipe(map(items => items.sort()));
+    return this.http.get<string[]>("http://10.100.1.80:8000/firstlevel").pipe(map(items => items.sort()));
   }
 
   public isFolderAllowed(path: string): Observable<boolean> {
-    return this.http.get<boolean>("/allowed/" + path);
+    return this.http.get<boolean>("http://10.100.1.80:8000/allowed/" + path);
   }
 }

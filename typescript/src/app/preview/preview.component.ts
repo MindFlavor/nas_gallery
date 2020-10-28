@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, Event, NavigationStart, NavigationEnd, NavigationError } from '@angular/router';
 import { encode } from 'punycode';
 import { max } from 'rxjs/operators';
 import { PreviewFile } from '../entities/items';
@@ -21,14 +21,26 @@ export class PreviewComponent implements OnInit {
   public currentPage: number;
   public isParentAllowed: boolean;
   public isRoot: boolean;
+  public path: string;
 
-  constructor(private simplegal: SimplegalService, private route: ActivatedRoute) { }
+  constructor(private simplegal: SimplegalService, private route: ActivatedRoute, private router: Router) { }
 
   ngOnInit(): void {
+    this.loadFolder(RemoteFolder.decodePath(window.location.pathname));
+
+    this.router.events.subscribe((event: Event) => {
+      if (event instanceof NavigationStart) {
+        this.loadFolder(RemoteFolder.decodePath(event.url));
+      }
+    });
+  }
+
+  private loadFolder(path: string) {
     this.isParentAllowed = false;
     this.isRoot = true;
+    this.path = path;
 
-    const path = RemoteFolder.decodePath(window.location.pathname);
+    //const path = RemoteFolder.decodePath(window.location.pathname);
     this.currentPage = 0;
     if (window.location.search.indexOf('=') != -1)
       this.currentPage = +window.location.search.substr(window.location.search.indexOf('=') + 1);
@@ -61,6 +73,8 @@ export class PreviewComponent implements OnInit {
         this.isParentAllowed = v;
       });
     }
+
+
   }
 
   public filesForThisPage(): PreviewFile[] {
@@ -75,9 +89,9 @@ export class PreviewComponent implements OnInit {
   }
 
   public getUpperFolder(): String {
-    const path = RemoteFolder.decodePath(window.location.pathname);
-    const idx = path.lastIndexOf("/");
-    return path.substring(0, idx);
+    //const path = RemoteFolder.decodePath(window.location.pathname);
+    const idx = this.path.lastIndexOf("/");
+    return this.path.substring(0, idx);
   }
 
   public pages(): PageLink[] {
@@ -167,7 +181,8 @@ export class PreviewComponent implements OnInit {
   }
 
   public currentPath(): string {
-    return RemoteFolder.decodePath(window.location.pathname);
+    //return RemoteFolder.decodePath(window.location.pathname);
+    return this.path;
   }
 
   public lastPathItem(path: string): string {
