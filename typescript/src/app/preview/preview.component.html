@@ -15,8 +15,8 @@
 
         <div *ngFor="let file of filesForThisPage()" class="responsive">
             <div class="gallery">
-                <a href="http://10.100.1.80:8000/path{{file.path}}">
-                    <img src="http://10.100.1.80:8000/thumb/512{{file.path}}" width="512px" height="512px" />
+                <a href="/path{{file.path}}">
+                    <img src="/thumb/512{{file.path}}" width="512px" height="512px" />
                 </a>
             </div>
         </div>
