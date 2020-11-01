@@ -29,7 +29,7 @@ use file_with_size::FileWithSize;
 use forwarded_identity::ForwardedIdentity;
 use logging::setup_logger;
 use options::*;
-use statistics::Statistics;
+use statistics::*;
 
 static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
 static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov"];
@@ -82,34 +82,31 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
 
 #[get("/", rank = 1)]
 fn root<'a>(
-    statistics: State<'_, Arc<RwLock<Statistics>>>,
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
 ) -> Response<'a> {
-    // only keep track of the accesses if the
-    // prometheus exporting has been
-    // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
-        statistics.write().unwrap().inc_page("/");
-    }
-
     if !options.identity_allowed(&forwarded_identity) {
+        track_unauthorized(&options, &statistics, "/");
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
     } else {
+        track_authorized_static(&options, &statistics, "/");
         let path = Path::new(&options.static_site_path).join("index.html");
         get_file(&path).unwrap()
     }
 }
 
 #[get("/<file..>", rank = 1)]
-fn site(
+fn site<'r>(
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     file: PathBuf,
-) -> Response<'_> {
+) -> Response<'r> {
     if !options.identity_allowed(&forwarded_identity) {
+        track_unauthorized(&options, &statistics, file.to_str().unwrap());
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
@@ -117,6 +114,7 @@ fn site(
         let complete_path = Path::new(&options.static_site_path).join(&file);
         trace!("requested: {:?}, mapped as {:?}", &file, &complete_path);
         if complete_path.exists() {
+            track_authorized_static(&options, &statistics, complete_path.to_str().unwrap());
             get_file(&complete_path).unwrap()
         } else {
             // the file does not exists so let's call index.html and let
@@ -132,6 +130,7 @@ fn site(
                 response.set_status(Status::NotFound);
                 response
             } else {
+                track_authorized_dynamic(&options, &statistics);
                 get_file(&path).unwrap()
             }
         }
@@ -139,11 +138,12 @@ fn site(
 }
 
 #[get("/path/<path..>")]
-fn path(
+fn path<'r>(
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     path: PathBuf,
-) -> Response<'_> {
+) -> Response<'r> {
     let path = PathBuf::from("/").join(path);
     trace!("requesting: {:?}", &path);
     trace!("Authenticated as {}", &forwarded_identity);
@@ -151,6 +151,7 @@ fn path(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
+        track_unauthorized(&options, &statistics, path.to_str().unwrap());
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
@@ -166,12 +167,14 @@ fn path(
         };
 
         if path.as_path().is_dir() {
+            track_authorized_not_found(&options, &statistics);
             let mut response = Response::new();
             response.set_status(Status::NotFound);
             response
         } else if IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension)
             || VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension)
         {
+            track_authorized_dynamic(&options, &statistics);
             options.audit(
                 &forwarded_identity.email,
                 "image/video",
@@ -190,6 +193,7 @@ fn path(
                 }
             }
         } else {
+            track_authorized_not_found(&options, &statistics);
             let mut response = Response::new();
             response.set_status(Status::NotFound);
             response
@@ -211,6 +215,7 @@ fn generate_thumb_folder_path(options: &Options, size: u64, original_path: &Path
 
 fn generate_picture_thumb(
     options: &Options,
+    statistics: &Arc<RwLock<Statistics>>,
     size: u64,
     original_path: &PathBuf,
     complete_path: &PathBuf,
@@ -312,6 +317,7 @@ fn generate_video_thumb(
 #[get("/thumb/<max_size>/<path..>")]
 fn thumb(
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     max_size: u64,
     path: PathBuf,
@@ -323,6 +329,7 @@ fn thumb(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
+        track_unauthorized_thumb(&options, &statistics);
         None
     } else {
         trace!("{:?}", path);
@@ -330,6 +337,7 @@ fn thumb(
         if path.as_path().is_dir() {
             None
         } else {
+            track_authorized_thumb(&options, &statistics);
             trace!("extension == {:?}", path.as_path().extension());
             let extension = match path.as_path().extension() {
                 Some(ext) => ext.to_str().unwrap().to_lowercase(),
@@ -337,7 +345,14 @@ fn thumb(
             };
 
             if IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension) {
-                NamedFile::open(generate_picture_thumb(&options, max_size, &path, &path)).ok()
+                NamedFile::open(generate_picture_thumb(
+                    &options,
+                    &statistics,
+                    max_size,
+                    &path,
+                    &path,
+                ))
+                .ok()
             } else if VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension) {
                 NamedFile::open(generate_video_thumb(&options, max_size, &path, &path)).ok()
             } else {
