@@ -14,6 +14,7 @@ use std::convert::TryInto;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::Ordering;
 
 mod audit;
 mod file_type;
@@ -22,11 +23,13 @@ mod folder;
 mod forwarded_identity;
 mod logging;
 mod options;
+mod statistics;
 use file_type::FileType;
 use file_with_size::FileWithSize;
 use forwarded_identity::ForwardedIdentity;
 use logging::setup_logger;
 use options::*;
+use statistics::Statistics;
 
 static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
 static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov"];
@@ -68,7 +71,13 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
 }
 
 #[get("/", rank = 1)]
-fn root(options: State<'_, Options>, forwarded_identity: ForwardedIdentity) -> Response<'_> {
+fn root<'a>(
+    statistics: State<'_, Statistics>,
+    options: State<'_, Options>,
+    forwarded_identity: ForwardedIdentity,
+) -> Response<'a> {
+    statistics.accesses_root.fetch_add(1, Ordering::Relaxed);
+
     if !options.identity_allowed(&forwarded_identity) {
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
@@ -560,5 +569,6 @@ fn main() {
         )
         .manage(first_folders_by_email)
         .manage(options)
+        .manage(Statistics::default())
         .launch();
 }

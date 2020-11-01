@@ -1,6 +1,6 @@
 [package]
 name = "nas_gallery"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["Francesco Cogno <francesco.cogno@gmail.com>"]
 edition = "2018"
 
@@ -16,3 +16,4 @@ fern = "0.6"
 chrono = "0.4"
 hyper = "0.13"
 snafu = "0.6"
+prometheus_exporter_base = "1.0"
