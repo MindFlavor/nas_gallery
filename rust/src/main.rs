@@ -14,7 +14,7 @@ use std::convert::TryInto;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, RwLock};
 
 mod audit;
 mod file_type;
@@ -33,6 +33,16 @@ use statistics::Statistics;
 
 static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
 static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov"];
+
+#[get("/metrics")]
+pub(crate) fn metrics<'r>(statistics: State<'_, Arc<RwLock<Statistics>>>) -> Response<'r> {
+    let mut response = Response::new();
+    response.set_status(Status::Ok);
+    response.set_sized_body(Cursor::new(
+        statistics.read().unwrap().render_to_prometheus(),
+    ));
+    response
+}
 
 fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>> {
     let file = std::fs::OpenOptions::new().read(true).open(&path)?;
@@ -72,11 +82,16 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
 
 #[get("/", rank = 1)]
 fn root<'a>(
-    statistics: State<'_, Statistics>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     options: State<'_, Options>,
     forwarded_identity: ForwardedIdentity,
 ) -> Response<'a> {
-    statistics.accesses_root.fetch_add(1, Ordering::Relaxed);
+    // only keep track of the accesses if the
+    // prometheus exporting has been
+    // enabled!
+    if let Some(_) = options.prometheus_metrics_port {
+        statistics.write().unwrap().inc_page("/");
+    }
 
     if !options.identity_allowed(&forwarded_identity) {
         let mut response = Response::new();
@@ -554,6 +569,23 @@ fn main() {
     let first_folders_by_email = options.calculate_first_level_folders_for_every_user();
     debug!("first_folders_by_email == {:#?}", first_folders_by_email);
 
+    let statistics = Arc::new(RwLock::new(Statistics::default()));
+
+    if let Some(prometheus_metrics_port) = options.prometheus_metrics_port {
+        let statistics = statistics.clone();
+        std::thread::spawn(move || {
+            let cfg = rocket::config::Config::build(rocket::config::Environment::Production)
+                .address("0.0.0.0")
+                .port(prometheus_metrics_port)
+                .workers(1) // only Prometheus will be calling it.
+                .unwrap();
+            rocket::custom(cfg)
+                .mount("/", routes![metrics])
+                .manage(statistics)
+                .launch();
+        });
+    }
+
     rocket::ignite()
         .mount(
             "/",
@@ -569,6 +601,6 @@ fn main() {
         )
         .manage(first_folders_by_email)
         .manage(options)
-        .manage(Statistics::default())
+        .manage(statistics)
         .launch();
 }
