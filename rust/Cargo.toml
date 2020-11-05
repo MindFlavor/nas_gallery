@@ -1,6 +1,6 @@
 [package]
 name = "nas_gallery"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Francesco Cogno <francesco.cogno@gmail.com>"]
 edition = "2018"
 
