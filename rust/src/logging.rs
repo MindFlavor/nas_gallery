@@ -34,6 +34,7 @@ pub(crate) fn setup_logger(options: &Options) -> Result<(), Error> {
         // privileges
         let _file = std::fs::OpenOptions::new()
             .write(true)
+            .create(true)
             .append(true)
             .open(&log_file)
             .context(WriteLog {
