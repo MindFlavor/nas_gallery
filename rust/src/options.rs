@@ -168,10 +168,7 @@ impl Options {
                 if !inherited {
                     res.push(folder);
                 }
-                inherited = match folder.inheritable {
-                    Some(inherited) => inherited,
-                    None => false,
-                };
+                inherited = folder.inheritable.unwrap_or(false);
             } else {
                 inherited = false;
             }
