@@ -29,7 +29,7 @@ use logging::setup_logger;
 use options::*;
 
 static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
-static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov"];
+static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov", "webm"];
 
 fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>> {
     let file = std::fs::OpenOptions::new().read(true).open(&path)?;
