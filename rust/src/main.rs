@@ -87,7 +87,7 @@ fn root<'a>(
     forwarded_identity: ForwardedIdentity,
 ) -> Response<'a> {
     if !options.identity_allowed(&forwarded_identity) {
-        track_unauthorized(&options, &statistics, "/");
+        track_unauthorized_static(&options, &statistics, "/");
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
@@ -106,7 +106,7 @@ fn site<'r>(
     file: PathBuf,
 ) -> Response<'r> {
     if !options.identity_allowed(&forwarded_identity) {
-        track_unauthorized(&options, &statistics, file.to_str().unwrap());
+        track_unauthorized_static(&options, &statistics, file.to_str().unwrap());
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
@@ -151,7 +151,7 @@ fn path<'r>(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
-        track_unauthorized(&options, &statistics, path.to_str().unwrap());
+        track_unauthorized_dynamic(&options, &statistics);
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response

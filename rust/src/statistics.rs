@@ -87,6 +87,16 @@ pub(crate) fn track_authorized_dynamic(
 }
 
 #[inline]
+pub(crate) fn track_unauthorized_dynamic(
+    options: &State<'_, Options>,
+    statistics: &State<'_, Arc<RwLock<Statistics>>>,
+) {
+    if options.prometheus_metrics_port.is_some() {
+        statistics.write().unwrap().unauthorized_dynamic += 1;
+    }
+}
+
+#[inline]
 pub(crate) fn track_picture_thumb_access(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
@@ -127,7 +137,7 @@ pub(crate) fn track_video_thumb_generation(
 }
 
 #[inline]
-pub(crate) fn track_unauthorized(
+pub(crate) fn track_unauthorized_static(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
     path: &str,
@@ -136,7 +146,7 @@ pub(crate) fn track_unauthorized(
     // prometheus exporting has been
     // enabled!
     if options.prometheus_metrics_port.is_some() {
-        statistics.write().unwrap().inc_unathorized(path);
+        statistics.write().unwrap().inc_unathorized_static(path);
     }
 }
 
@@ -182,7 +192,8 @@ pub(crate) fn track_authorized_thumb(
 #[derive(Debug)]
 pub struct Statistics {
     pub authorized_static: HashMap<String, u64>,
-    pub unathorized: HashMap<String, u64>,
+    pub unathorized_static: HashMap<String, u64>,
+    pub unauthorized_dynamic: u64,
     pub authorized_dynamic: u64,
     pub authorized_not_found: u64,
     pub authorized_thumb: u64,
@@ -211,8 +222,9 @@ impl Default for Statistics {
 
         Self {
             authorized_static: HashMap::new(),
-            unathorized: HashMap::new(),
+            unathorized_static: HashMap::new(),
             authorized_dynamic: 0,
+            unauthorized_dynamic: 0,
             authorized_not_found: 0,
             authorized_thumb: 0,
             unauthorized_thumb: 0,
@@ -253,11 +265,11 @@ impl Statistics {
         }
     }
 
-    pub(crate) fn inc_unathorized(&mut self, page: &str) {
-        if let Some(original_value) = self.unathorized.get_mut(page) {
+    pub(crate) fn inc_unathorized_static(&mut self, page: &str) {
+        if let Some(original_value) = self.unathorized_static.get_mut(page) {
             *original_value += 1;
         } else {
-            self.unathorized.insert(page.to_owned(), 1);
+            self.unathorized_static.insert(page.to_owned(), 1);
         }
     }
 
@@ -280,12 +292,12 @@ impl Statistics {
         s.push_str(&pc.render());
 
         let mut pc = PrometheusMetric::build()
-            .with_name("nas_gallery_unauthorized_access")
+            .with_name("nas_gallery_unauthorized_access_to_static_content")
             .with_metric_type(MetricType::Counter)
-            .with_help("Unauthorized access")
+            .with_help("Unauthorized access to static content")
             .build();
 
-        self.unathorized.iter().for_each(|(key, val)| {
+        self.unathorized_static.iter().for_each(|(key, val)| {
             pc.render_and_append_instance(
                 &PrometheusInstance::new()
                     .with_label("path", key.as_ref())
