@@ -23,6 +23,8 @@ services:
     image: "mindflavor/nas_gallery:latest"
     networks:
       oauth2-proxy: 
+    ports:
+      - "9355:9355"
     user: "149:65534"
     volumes:
       - /your_folder:/mnt/nas

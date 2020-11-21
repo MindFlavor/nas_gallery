@@ -14,6 +14,7 @@ use std::convert::TryInto;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, RwLock};
 
 mod audit;
 mod file_type;
@@ -22,14 +23,26 @@ mod folder;
 mod forwarded_identity;
 mod logging;
 mod options;
+mod statistics;
 use file_type::FileType;
 use file_with_size::FileWithSize;
 use forwarded_identity::ForwardedIdentity;
 use logging::setup_logger;
 use options::*;
+use statistics::*;
 
 static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
 static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov", "webm"];
+
+#[get("/metrics")]
+pub(crate) fn metrics<'r>(statistics: State<'_, Arc<RwLock<Statistics>>>) -> Response<'r> {
+    let mut response = Response::new();
+    response.set_status(Status::Ok);
+    response.set_sized_body(Cursor::new(
+        statistics.read().unwrap().render_to_prometheus(),
+    ));
+    response
+}
 
 fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>> {
     let file = std::fs::OpenOptions::new().read(true).open(&path)?;
@@ -68,24 +81,32 @@ fn get_file<'r>(path: &Path) -> Result<Response<'r>, Box<dyn std::error::Error>>
 }
 
 #[get("/", rank = 1)]
-fn root(options: State<'_, Options>, forwarded_identity: ForwardedIdentity) -> Response<'_> {
+fn root<'a>(
+    options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
+    forwarded_identity: ForwardedIdentity,
+) -> Response<'a> {
     if !options.identity_allowed(&forwarded_identity) {
+        track_unauthorized_static(&options, &statistics, "/");
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
     } else {
+        track_authorized_static(&options, &statistics, "/");
         let path = Path::new(&options.static_site_path).join("index.html");
         get_file(&path).unwrap()
     }
 }
 
 #[get("/<file..>", rank = 1)]
-fn site(
+fn site<'r>(
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     file: PathBuf,
-) -> Response<'_> {
+) -> Response<'r> {
     if !options.identity_allowed(&forwarded_identity) {
+        track_unauthorized_static(&options, &statistics, file.to_str().unwrap());
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
@@ -93,6 +114,7 @@ fn site(
         let complete_path = Path::new(&options.static_site_path).join(&file);
         trace!("requested: {:?}, mapped as {:?}", &file, &complete_path);
         if complete_path.exists() {
+            track_authorized_static(&options, &statistics, complete_path.to_str().unwrap());
             get_file(&complete_path).unwrap()
         } else {
             // the file does not exists so let's call index.html and let
@@ -108,6 +130,7 @@ fn site(
                 response.set_status(Status::NotFound);
                 response
             } else {
+                track_authorized_dynamic(&options, &statistics);
                 get_file(&path).unwrap()
             }
         }
@@ -115,11 +138,12 @@ fn site(
 }
 
 #[get("/path/<path..>")]
-fn path(
+fn path<'r>(
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     path: PathBuf,
-) -> Response<'_> {
+) -> Response<'r> {
     let path = PathBuf::from("/").join(path);
     trace!("requesting: {:?}", &path);
     trace!("Authenticated as {}", &forwarded_identity);
@@ -127,6 +151,7 @@ fn path(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
+        track_unauthorized_dynamic(&options, &statistics);
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
@@ -142,12 +167,14 @@ fn path(
         };
 
         if path.as_path().is_dir() {
+            track_authorized_not_found(&options, &statistics);
             let mut response = Response::new();
             response.set_status(Status::NotFound);
             response
         } else if IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension)
             || VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension)
         {
+            track_authorized_dynamic(&options, &statistics);
             options.audit(
                 &forwarded_identity.email,
                 "image/video",
@@ -166,6 +193,7 @@ fn path(
                 }
             }
         } else {
+            track_authorized_not_found(&options, &statistics);
             let mut response = Response::new();
             response.set_status(Status::NotFound);
             response
@@ -186,7 +214,8 @@ fn generate_thumb_folder_path(options: &Options, size: u64, original_path: &Path
 }
 
 fn generate_picture_thumb(
-    options: &Options,
+    options: &State<'_, Options>,
+    statistics: &State<'_, Arc<RwLock<Statistics>>>,
     size: u64,
     original_path: &PathBuf,
     complete_path: &PathBuf,
@@ -196,9 +225,12 @@ fn generate_picture_thumb(
         original_path.file_name().unwrap().to_str().unwrap()
     ));
     trace!("output_file_name == {:#?}", output_file_name);
+    track_picture_thumb_access(options, statistics);
 
     // if we already have a thumb, do not regenerate it
     if !output_file_name.exists() {
+        track_picture_thumb_generation(options, statistics);
+
         let mut cmd = Command::new("convert");
         let cmd = cmd.args(&[
             complete_path.to_str().unwrap(),
@@ -222,7 +254,8 @@ fn generate_picture_thumb(
 }
 
 fn generate_video_thumb(
-    options: &Options,
+    options: &State<'_, Options>,
+    statistics: &State<'_, Arc<RwLock<Statistics>>>,
     size: u64,
     original_path: &PathBuf,
     complete_path: &PathBuf,
@@ -232,9 +265,12 @@ fn generate_video_thumb(
         original_path.file_name().unwrap().to_str().unwrap()
     ));
     trace!("output_file_name == {:#?}", output_file_name);
+    track_video_thumb_access(options, statistics);
 
     // if we already have a thumb, do not regenerate it
     if !output_file_name.exists() {
+        track_video_thumb_generation(options, statistics);
+
         let mut cmd = Command::new("ffmpeg");
         let cmd = cmd.args(&[
             "-i",
@@ -288,6 +324,7 @@ fn generate_video_thumb(
 #[get("/thumb/<max_size>/<path..>")]
 fn thumb(
     options: State<'_, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     max_size: u64,
     path: PathBuf,
@@ -299,6 +336,7 @@ fn thumb(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
+        track_unauthorized_thumb(&options, &statistics);
         None
     } else {
         trace!("{:?}", path);
@@ -306,6 +344,7 @@ fn thumb(
         if path.as_path().is_dir() {
             None
         } else {
+            track_authorized_thumb(&options, &statistics);
             trace!("extension == {:?}", path.as_path().extension());
             let extension = match path.as_path().extension() {
                 Some(ext) => ext.to_str().unwrap().to_lowercase(),
@@ -313,9 +352,23 @@ fn thumb(
             };
 
             if IMAGE_EXTENSIONS.iter().any(|&ext| ext == extension) {
-                NamedFile::open(generate_picture_thumb(&options, max_size, &path, &path)).ok()
+                NamedFile::open(generate_picture_thumb(
+                    &options,
+                    &statistics,
+                    max_size,
+                    &path,
+                    &path,
+                ))
+                .ok()
             } else if VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension) {
-                NamedFile::open(generate_video_thumb(&options, max_size, &path, &path)).ok()
+                NamedFile::open(generate_video_thumb(
+                    &options,
+                    &statistics,
+                    max_size,
+                    &path,
+                    &path,
+                ))
+                .ok()
             } else {
                 None
             }
@@ -334,12 +387,13 @@ fn is_previewable_file(file: &PathBuf) -> bool {
 }
 
 #[get("/list/<file_type>/<path..>")]
-fn list_files(
-    options: State<'_, Options>,
+fn list_files<'a>(
+    options: State<'a, Options>,
+    statistics: State<'a, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     file_type: FileType,
     path: PathBuf,
-) -> Response<'_> {
+) -> Response<'a> {
     let path = PathBuf::from("/").join(path);
     trace!("Authenticated as {}", &forwarded_identity);
     trace!("requested path == {:?}", &path);
@@ -348,10 +402,13 @@ fn list_files(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
+        track_unauthorized_list_files(&options, &statistics, file_type);
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         return response;
     }
+
+    track_authorized_list_files(&options, &statistics, file_type);
 
     let items = match file_type {
         FileType::Preview => {
@@ -459,6 +516,7 @@ fn is_folder_allowed(
 #[get("/firstlevel")]
 fn get_first_level_folders<'r>(
     options: State<'r, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     first_folder_by_email: State<'r, HashMap<String, Vec<String>>>,
     forwarded_identity: ForwardedIdentity,
 ) -> Response<'r> {
@@ -472,10 +530,12 @@ fn get_first_level_folders<'r>(
         true,
     );
     if !options.identity_allowed(&forwarded_identity) {
+        track_unauthorized_first_level_folders(&options, &statistics);
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
     } else {
+        track_authorized_first_level_folders(&options, &statistics);
         let mut response = Response::new();
         response.set_status(Status::Ok);
         add_access_control_allow_origin_if_needed(&mut response, &options);
@@ -545,6 +605,23 @@ fn main() {
     let first_folders_by_email = options.calculate_first_level_folders_for_every_user();
     debug!("first_folders_by_email == {:#?}", first_folders_by_email);
 
+    let statistics = Arc::new(RwLock::new(Statistics::default()));
+
+    if options.prometheus_metrics_enabled {
+        let statistics = statistics.clone();
+        std::thread::spawn(move || {
+            let cfg = rocket::config::Config::build(rocket::config::Environment::Production)
+                .address("0.0.0.0")
+                .port(9355)
+                .workers(1) // only Prometheus will be calling it.
+                .unwrap();
+            rocket::custom(cfg)
+                .mount("/", routes![metrics])
+                .manage(statistics)
+                .launch();
+        });
+    }
+
     rocket::ignite()
         .mount(
             "/",
@@ -560,5 +637,6 @@ fn main() {
         )
         .manage(first_folders_by_email)
         .manage(options)
+        .manage(statistics)
         .launch();
 }
