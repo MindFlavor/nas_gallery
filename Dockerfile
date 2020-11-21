@@ -40,3 +40,4 @@ COPY --from=angular /usr/src/nas_gallery/typescript/dist/simplegal/ /var/www/nas
 USER 1000
 CMD ["./nas_gallery", "/etc/nas_gallery/config.toml"]
 EXPOSE 8000/tcp
+EXPOSE 9355/tcp

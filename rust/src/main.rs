@@ -607,12 +607,12 @@ fn main() {
 
     let statistics = Arc::new(RwLock::new(Statistics::default()));
 
-    if let Some(prometheus_metrics_port) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_enabled {
         let statistics = statistics.clone();
         std::thread::spawn(move || {
             let cfg = rocket::config::Config::build(rocket::config::Environment::Production)
                 .address("0.0.0.0")
-                .port(prometheus_metrics_port)
+                .port(9355)
                 .workers(1) // only Prometheus will be calling it.
                 .unwrap();
             rocket::custom(cfg)

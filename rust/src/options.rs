@@ -22,7 +22,7 @@ pub struct OptionsInternal {
     pub static_site_path: String,
     pub groups: Vec<Group>,
     pub folders: Vec<Folder>,
-    pub prometheus_metrics_port: Option<u16>,
+    pub prometheus_metrics_enabled: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -36,7 +36,7 @@ pub struct Options {
     pub audit: Option<Audit>,
     pub groups: Vec<Group>,
     pub folders: Vec<Folder>,
-    pub prometheus_metrics_port: Option<u16>,
+    pub prometheus_metrics_enabled: bool,
     all_emails: HashSet<String>,
 }
 
@@ -80,7 +80,7 @@ impl TryFrom<&str> for Options {
             static_site_path: options.static_site_path,
             groups: options.groups,
             folders: options.folders,
-            prometheus_metrics_port: options.prometheus_metrics_port,
+            prometheus_metrics_enabled: options.prometheus_metrics_enabled.unwrap_or(false),
             all_emails,
         })
     }
