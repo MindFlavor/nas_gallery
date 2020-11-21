@@ -214,8 +214,8 @@ fn generate_thumb_folder_path(options: &Options, size: u64, original_path: &Path
 }
 
 fn generate_picture_thumb(
-    options: &Options,
-    statistics: &Arc<RwLock<Statistics>>,
+    options: &State<'_, Options>,
+    statistics: &State<'_, Arc<RwLock<Statistics>>>,
     size: u64,
     original_path: &PathBuf,
     complete_path: &PathBuf,
@@ -225,9 +225,12 @@ fn generate_picture_thumb(
         original_path.file_name().unwrap().to_str().unwrap()
     ));
     trace!("output_file_name == {:#?}", output_file_name);
+    track_picture_thumb_access(options, statistics);
 
     // if we already have a thumb, do not regenerate it
     if !output_file_name.exists() {
+        track_picture_thumb_generation(options, statistics);
+
         let mut cmd = Command::new("convert");
         let cmd = cmd.args(&[
             complete_path.to_str().unwrap(),
@@ -251,7 +254,8 @@ fn generate_picture_thumb(
 }
 
 fn generate_video_thumb(
-    options: &Options,
+    options: &State<'_, Options>,
+    statistics: &State<'_, Arc<RwLock<Statistics>>>,
     size: u64,
     original_path: &PathBuf,
     complete_path: &PathBuf,
@@ -261,9 +265,12 @@ fn generate_video_thumb(
         original_path.file_name().unwrap().to_str().unwrap()
     ));
     trace!("output_file_name == {:#?}", output_file_name);
+    track_video_thumb_access(options, statistics);
 
     // if we already have a thumb, do not regenerate it
     if !output_file_name.exists() {
+        track_video_thumb_generation(options, statistics);
+
         let mut cmd = Command::new("ffmpeg");
         let cmd = cmd.args(&[
             "-i",
@@ -354,7 +361,14 @@ fn thumb(
                 ))
                 .ok()
             } else if VIDEO_EXTENSIONS.iter().any(|&ext| ext == extension) {
-                NamedFile::open(generate_video_thumb(&options, max_size, &path, &path)).ok()
+                NamedFile::open(generate_video_thumb(
+                    &options,
+                    &statistics,
+                    max_size,
+                    &path,
+                    &path,
+                ))
+                .ok()
             } else {
                 None
             }
@@ -373,12 +387,13 @@ fn is_previewable_file(file: &PathBuf) -> bool {
 }
 
 #[get("/list/<file_type>/<path..>")]
-fn list_files(
-    options: State<'_, Options>,
+fn list_files<'a>(
+    options: State<'a, Options>,
+    statistics: State<'a, Arc<RwLock<Statistics>>>,
     forwarded_identity: ForwardedIdentity,
     file_type: FileType,
     path: PathBuf,
-) -> Response<'_> {
+) -> Response<'a> {
     let path = PathBuf::from("/").join(path);
     trace!("Authenticated as {}", &forwarded_identity);
     trace!("requested path == {:?}", &path);
@@ -387,10 +402,13 @@ fn list_files(
     trace!("is_folder_allowed == {}", is_folder_allowed);
 
     if !is_folder_allowed {
+        track_unauthorized_list_files(&options, &statistics, file_type);
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         return response;
     }
+
+    track_authorized_list_files(&options, &statistics, file_type);
 
     let items = match file_type {
         FileType::Preview => {
@@ -498,6 +516,7 @@ fn is_folder_allowed(
 #[get("/firstlevel")]
 fn get_first_level_folders<'r>(
     options: State<'r, Options>,
+    statistics: State<'_, Arc<RwLock<Statistics>>>,
     first_folder_by_email: State<'r, HashMap<String, Vec<String>>>,
     forwarded_identity: ForwardedIdentity,
 ) -> Response<'r> {
@@ -511,10 +530,12 @@ fn get_first_level_folders<'r>(
         true,
     );
     if !options.identity_allowed(&forwarded_identity) {
+        track_unauthorized_first_level_folders(&options, &statistics);
         let mut response = Response::new();
         response.set_status(Status::Unauthorized);
         response
     } else {
+        track_authorized_first_level_folders(&options, &statistics);
         let mut response = Response::new();
         response.set_status(Status::Ok);
         add_access_control_allow_origin_if_needed(&mut response, &options);
