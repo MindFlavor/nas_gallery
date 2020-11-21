@@ -10,7 +10,7 @@ pub(crate) fn track_authorized_first_level_folders(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
 ) {
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().authorized_first_level_folders += 1;
     }
 }
@@ -20,7 +20,7 @@ pub(crate) fn track_unauthorized_first_level_folders(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
 ) {
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().unauthorized_first_level_folders += 1;
     }
 }
@@ -34,7 +34,7 @@ pub(crate) fn track_authorized_list_files(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics
             .write()
             .unwrap()
@@ -51,7 +51,7 @@ pub(crate) fn track_unauthorized_list_files(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics
             .write()
             .unwrap()
@@ -68,7 +68,7 @@ pub(crate) fn track_authorized_static(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().inc_authorized_static(path);
     }
 }
@@ -81,7 +81,7 @@ pub(crate) fn track_authorized_dynamic(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().authorized_dynamic += 1;
     }
 }
@@ -91,7 +91,7 @@ pub(crate) fn track_picture_thumb_access(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
 ) {
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().picture_thumb_access += 1;
     }
 }
@@ -101,7 +101,7 @@ pub(crate) fn track_picture_thumb_generation(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
 ) {
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().picture_thumb_generation += 1;
     }
 }
@@ -111,7 +111,7 @@ pub(crate) fn track_video_thumb_access(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
 ) {
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().video_thumb_access += 1;
     }
 }
@@ -121,7 +121,7 @@ pub(crate) fn track_video_thumb_generation(
     options: &State<'_, Options>,
     statistics: &State<'_, Arc<RwLock<Statistics>>>,
 ) {
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().video_thumb_generation += 1;
     }
 }
@@ -135,7 +135,7 @@ pub(crate) fn track_unauthorized(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().inc_unathorized(path);
     }
 }
@@ -148,7 +148,7 @@ pub(crate) fn track_authorized_not_found(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().authorized_not_found += 1;
     }
 }
@@ -161,7 +161,7 @@ pub(crate) fn track_unauthorized_thumb(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().unauthorized_thumb += 1;
     }
 }
@@ -174,7 +174,7 @@ pub(crate) fn track_authorized_thumb(
     // only keep track of the accesses if the
     // prometheus exporting has been
     // enabled!
-    if let Some(_) = options.prometheus_metrics_port {
+    if options.prometheus_metrics_port.is_some() {
         statistics.write().unwrap().authorized_thumb += 1;
     }
 }
