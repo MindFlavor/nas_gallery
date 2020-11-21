@@ -32,7 +32,7 @@ use options::*;
 use statistics::*;
 
 static IMAGE_EXTENSIONS: &[&str] = &["png", "bmp", "jpg", "gif"];
-static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov"];
+static VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "mov", "webm"];
 
 #[get("/metrics")]
 pub(crate) fn metrics<'r>(statistics: State<'_, Arc<RwLock<Statistics>>>) -> Response<'r> {
